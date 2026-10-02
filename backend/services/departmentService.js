@@ -1,146 +1,107 @@
 const universitySource = require("../sources/university");
 
-/*
- * Department service
- *
- * Responsibilities:
- * 1. Get public department information from the AU source layer.
- * 2. Normalize the returned structure.
- * 3. Provide search and filtering for the API routes.
- *
- * This service does not bypass authentication, CAPTCHA,
- * or restricted university systems.
- */
-
-
 /**
- * Normalize a single department record.
+ * Get all publicly available department information.
  *
- * @param {Object} department
- * @returns {Object}
+ * This service does not contain private student information.
+ * It only works with information made publicly available
+ * by the university source layer.
  */
-function normalizeDepartment(department) {
-  if (!department || typeof department !== "object") {
-    return null;
-  }
+async function getDepartments(options = {}) {
+  try {
+    const departments = await universitySource.getDepartments();
 
-  return {
-    id: department.id ?? null,
-    name: department.name ?? null,
-    faculty: department.faculty ?? null,
-    code: department.code ?? null,
-    description: department.description ?? null,
-    source: department.source ?? null
-  };
-}
+    if (!Array.isArray(departments)) {
+      return [];
+    }
 
+    let result = departments;
 
-/**
- * Get all publicly available departments.
- *
- * @returns {Promise<Array>}
- */
-async function getDepartments() {
-  const departments = await universitySource.getDepartments();
-
-  if (!Array.isArray(departments)) {
-    return [];
-  }
-
-  return departments
-    .map(normalizeDepartment)
-    .filter(Boolean);
-}
-
-
-/**
- * Search departments by name, code, faculty, or description.
- *
- * @param {string} keyword
- * @returns {Promise<Array>}
- */
-async function searchDepartments(keyword) {
-  const searchTerm = String(keyword || "")
-    .trim()
-    .toLowerCase();
-
-  if (!searchTerm) {
-    return getDepartments();
-  }
-
-  const departments = await getDepartments();
-
-  return departments.filter((department) => {
-    const searchableText = [
-      department.name,
-      department.code,
-      department.faculty,
-      department.description
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return searchableText.includes(searchTerm);
-  });
-}
-
-
-/**
- * Filter departments by faculty.
- *
- * @param {string} faculty
- * @returns {Promise<Array>}
- */
-async function getDepartmentsByFaculty(faculty) {
-  const facultyName = String(faculty || "")
-    .trim()
-    .toLowerCase();
-
-  if (!facultyName) {
-    return getDepartments();
-  }
-
-  const departments = await getDepartments();
-
-  return departments.filter((department) => {
-    return (
-      String(department.faculty || "")
+    // Optional search filter
+    if (options.search) {
+      const keyword = String(options.search)
         .trim()
-        .toLowerCase() === facultyName
+        .toLowerCase();
+
+      if (keyword) {
+        result = result.filter((department) => {
+          const name = String(department.name || "").toLowerCase();
+          const code = String(department.code || "").toLowerCase();
+          const faculty = String(
+            department.faculty || ""
+          ).toLowerCase();
+
+          return (
+            name.includes(keyword) ||
+            code.includes(keyword) ||
+            faculty.includes(keyword)
+          );
+        });
+      }
+    }
+
+    // Optional faculty filter
+    if (options.faculty) {
+      const facultyKeyword = String(options.faculty)
+        .trim()
+        .toLowerCase();
+
+      if (facultyKeyword) {
+        result = result.filter((department) => {
+          const faculty = String(
+            department.faculty || ""
+          ).toLowerCase();
+
+          return faculty.includes(facultyKeyword);
+        });
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      "Department service error:",
+      error.message
     );
-  });
+
+    throw new Error(
+      "Unable to retrieve department information"
+    );
+  }
 }
 
-
 /**
- * Find one department by ID.
- *
- * @param {string|number} id
- * @returns {Promise<Object|null>}
+ * Get one department by its identifier.
  */
 async function getDepartmentById(id) {
-  const departmentId = String(id || "").trim();
+  try {
+    const departments = await universitySource.getDepartments();
 
-  if (!departmentId) {
-    return null;
+    if (!Array.isArray(departments)) {
+      return null;
+    }
+
+    const department = departments.find(
+      (item) =>
+        String(item.id) === String(id) ||
+        String(item.code || "").toLowerCase() ===
+          String(id).toLowerCase()
+    );
+
+    return department || null;
+  } catch (error) {
+    console.error(
+      "Department lookup service error:",
+      error.message
+    );
+
+    throw new Error(
+      "Unable to retrieve department"
+    );
   }
-
-  const departments = await getDepartments();
-
-  return (
-    departments.find(
-      (department) =>
-        String(department.id || "").trim() === departmentId
-    ) || null
-  );
 }
-
 
 module.exports = {
   getDepartments,
-  searchDepartments,
-  getDepartmentsByFaculty,
-  getDepartmentById,
-  normalizeDepartment
+  getDepartmentById
 };
